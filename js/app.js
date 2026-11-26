@@ -403,10 +403,11 @@ function initSegments() {
       stopPlayback(); // не петь под играющий отрезок
       await recorder.start({ maxSeconds: 0, onLevel: null });
       startTimer($('seg-timer'));
-      setSegRecording(true);
     } catch (e) {
       alert('Микрофон недоступен: ' + e.message);
+      return;
     }
+    setSegRecording(true);
   });
 
   // Отдельная кнопка «Остановить запись»: запись прекращается, «Готово» становится доступной
