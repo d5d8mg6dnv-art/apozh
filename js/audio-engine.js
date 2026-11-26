@@ -374,6 +374,61 @@ export function concatWithCrossfade(segments, sampleRate = SAMPLE_RATE, crossfad
   return out;
 }
 
+/**
+ * Обрезка тишины по краям записи. Начало и конец отрезка почти всегда
+ * содержат паузу: человек нажимает «Записать», потом начинает петь, а после
+ * пения молчит до «Стоп». При склейке эти паузы складываются в заметные
+ * провалы. Функция убирает тишину с обоих краёв, оставляя запас на затухание.
+ */
+export function trimSilence(samples, sampleRate = SAMPLE_RATE, opts = {}) {
+  const { floor = 0.01, padMs = 40, relThreshold = 0.06 } = opts;
+  if (!samples || !samples.length) return samples;
+
+  // порог: не ниже шумового порога и не ниже доли от пика
+  let peak = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const v = Math.abs(samples[i]);
+    if (v > peak) peak = v;
+  }
+  if (peak < floor) return samples;             // совсем тихо — не трогаем
+  const th = Math.max(floor, peak * relThreshold);
+
+  const frame = Math.max(1, Math.round(sampleRate * 0.005)); // кадр 5 мс
+  const isLoud = (from) => {
+    let e = 0;
+    for (let i = from; i < Math.min(from + frame, samples.length); i++) {
+      const v = Math.abs(samples[i]);
+      if (v > e) e = v;
+    }
+    return e >= th;
+  };
+
+  let start = 0;
+  while (start + frame < samples.length && !isLoud(start)) start += frame;
+  let end = samples.length;
+  while (end - frame > 0 && !isLoud(end - frame)) end -= frame;
+  if (start >= end) return samples;             // одна тишина
+
+  const pad = Math.round((sampleRate * padMs) / 1000);
+  start = Math.max(0, start - pad);
+  end = Math.min(samples.length, end + pad);
+  return samples.subarray(start, end);
+}
+
+/**
+ * Склейка для финальной дорожки: обрезаем тишину у каждого куска и стыкуем
+ * вплотную (с коротким фейдом против щелчков). Пауз между кусками нет.
+ */
+export function concatClean(segments, sampleRate = SAMPLE_RATE, crossfadeMs = CROSSFADE_MS) {
+  const parts = [];
+  for (const s of segments) {
+    if (!s || !s.length) continue;
+    const t = trimSilence(s, sampleRate);
+    if (t && t.length) parts.push(t);
+  }
+  return concatWithCrossfade(parts, sampleRate, crossfadeMs);
+}
+
 /** Кодирование в WAV (16 бит PCM) — работает везде, включая iOS. */
 export function encodeWav(samples, sampleRate = SAMPLE_RATE) {
   const bytesPerSample = 2;
