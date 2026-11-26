@@ -362,8 +362,9 @@ function drawWave(canvas, samples, bounds = []) {
 function renderSegments() {
   const total = state.segments.length;
   $('seg-progress').textContent = `Отрезок ${state.current + 1} из ${total}`;
-  $('btn-seg-done').disabled = !state.recordings[state.current];
-  $('btn-seg-rec').disabled = false;
+  // кнопки в согласованном состоянии: пишем — «Записать» спрятана за disabled,
+  // «Стоп» доступна; не пишем — наоборот, «Готово» зависит от наличия записи
+  setSegRecording(recorder.isRecording === true);
   $('seg-timer').textContent = '0.0 с';
 
   const list = $('seg-list');
@@ -402,24 +403,45 @@ function initSegments() {
       stopPlayback(); // не петь под играющий отрезок
       await recorder.start({ maxSeconds: 0, onLevel: null });
       startTimer($('seg-timer'));
-      $('btn-seg-done').disabled = true;
+      setSegRecording(true);
     } catch (e) {
       alert('Микрофон недоступен: ' + e.message);
     }
   });
 
+  // Отдельная кнопка «Остановить запись»: запись прекращается, «Готово» становится доступной
+  $('btn-seg-rec-stop').addEventListener('click', () => {
+    if (!recorder.isRecording) return;
+    finishSegRecording();
+    setSegRecording(false);
+  });
+
   $('btn-seg-done').addEventListener('click', () => {
-    // «Готово» = остановить запись и принять отрезок
-    if (recorder.isRecording) finishSegRecording();
+    // «Готово» принимает уже записанный и остановленный отрезок
+    if (recorder.isRecording) {
+      finishSegRecording();
+      setSegRecording(false);
+    }
     if (!state.recordings[state.current]) return;
     state.current++;
     if (state.current >= state.segments.length) {
       buildFinal();
       show('screen-finish');
     } else {
+      setSegRecording(false);
       renderSegments();
     }
   });
+}
+
+/** Переключение кнопок на экране записи отрезка: пишем / остановлено. */
+function setSegRecording(on) {
+  const rec = $('btn-seg-rec');
+  const stop = $('btn-seg-rec-stop');
+  const done = $('btn-seg-done');
+  if (rec) rec.disabled = on;
+  if (stop) stop.disabled = !on;
+  if (done) done.disabled = on || !state.recordings[state.current];
 }
 
 function finishSegRecording() {
@@ -432,7 +454,8 @@ function finishSegRecording() {
   // каждую запись игрока 2 тоже обрабатываем: отрезки не должны прыгать по громкости
   state.recordings[state.current] = makeListenable(data);
   $('seg-timer').textContent = `${fmt(seconds(data))} · пик ${peakLevel(data).toFixed(2)}`;
-  $('btn-seg-done').disabled = false;
+  if (typeof setSegRecording === 'function') setSegRecording(false);
+  else $('btn-seg-done').disabled = false;
 }
 
 /* ---------- экран 5: финал ---------- */
