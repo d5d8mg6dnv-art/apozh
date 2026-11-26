@@ -8,6 +8,7 @@ import {
   audioStatus, playTestTone,
   makeListenable, peakLevel,
   findSplitPoint, insertBoundary,
+  concatClean,
 } from './audio-engine.js';
 
 const $ = (id) => document.getElementById(id);
@@ -463,7 +464,9 @@ function finishSegRecording() {
 
 function buildFinal() {
   const order = state.recordings.map((r) => r || new Float32Array(0));
-  const assembled = concatWithCrossfade(order, SAMPLE_RATE);
+  // склейка с обрезкой пауз: начало и конец каждой записи почти всегда тихие,
+  // иначе между кусками слышны провалы
+  const assembled = concatClean(order, SAMPLE_RATE);
   // финал тоже обрабатываем — иначе кнопка «Слушать результат» тише, чем куски
   state.finalSamples = makeListenable(reverse(assembled));
   const secs = seconds(state.finalSamples);
